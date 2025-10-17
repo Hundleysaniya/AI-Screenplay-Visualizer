@@ -1,0 +1,5 @@
+{
+  "name": "AI Screenplay Visualizer",
+  "description": "An AI-powered tool to generate screenplays from ideas, create visual prompts for each scene, and generate keyframe images. Perfect for writers and directors to visualize their stories.",
+  "requestFramePermissions": []
+}
