@@ -99,16 +99,39 @@ export async function generateVisualsForScene(
     };
 }
 
+export async function generateCharacterImage(prompt: string, aspectRatio: string = '1:1'): Promise<string> {
+    const model = 'gemini-2.5-flash-image';
+
+    const fullPrompt = `${prompt}. Ensure the image has a cinematic ${aspectRatio} aspect ratio.`;
+
+    const response = await ai.models.generateContent({
+        model,
+        contents: { parts: [{ text: fullPrompt }] },
+        config: {
+            responseModalities: [Modality.IMAGE],
+        }
+    });
+
+    const firstPart = response.candidates?.[0]?.content?.parts?.[0];
+    if (firstPart && firstPart.inlineData) {
+        return firstPart.inlineData.data;
+    }
+
+    throw new Error('No image data returned from API for character generation.');
+}
+
 export async function generateKeyframeImage(
     prompt: string,
     characterReferencesBase64: string[] = [],
     existingImageBase64?: string,
     editPrompt?: string,
+    aspectRatio: string = '1:1'
 ): Promise<string> {
     const model = 'gemini-2.5-flash-image';
     
     const parts: any[] = [];
     let textPrompt: string;
+    const aspectRatioText = ` The image must have a cinematic ${aspectRatio} aspect ratio.`;
 
     if (existingImageBase64 && editPrompt) {
         // EDITING MODE: Use existing image and edit prompt
@@ -118,16 +141,21 @@ export async function generateKeyframeImage(
                 mimeType: 'image/png'
             }
         });
+        
         textPrompt = editPrompt;
+
         // Optionally add character references during edit too
         characterReferencesBase64.forEach(refBase64 => {
              parts.push({
                 inlineData: { data: refBase64, mimeType: 'image/jpeg' }
             });
         });
+
         if(characterReferencesBase64.length > 0) {
             textPrompt = `Using the reference characters, apply this edit: ${editPrompt}`;
         }
+        
+        textPrompt += aspectRatioText;
 
     } else {
         // GENERATION MODE: Use character references or just the prompt
@@ -145,6 +173,8 @@ export async function generateKeyframeImage(
         } else {
             textPrompt = prompt;
         }
+
+        textPrompt += aspectRatioText;
     }
     
     parts.push({ text: textPrompt });

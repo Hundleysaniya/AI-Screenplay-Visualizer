@@ -1,19 +1,41 @@
 import React, { useState, useCallback } from 'react';
 import type { Scene } from './types';
-import { generateScreenplay, generateVisualsForScene, generateKeyframeImage } from './services/geminiService';
+import { generateScreenplay, generateVisualsForScene, generateKeyframeImage, generateCharacterImage } from './services/geminiService';
 import { downloadTextFile, downloadImagesAsZip } from './utils/fileUtils';
 import Header from './components/Header';
 import IdeaInput from './components/IdeaInput';
 import SceneList from './components/SceneList';
 import DownloadControls from './components/DownloadControls';
 import CharacterManagement from './components/CharacterImageUpload';
+import ImageModal from './components/ImageModal';
+import Settings from './components/Settings';
+
+const getErrorMessage = (err: unknown, contextMessage: string): string => {
+    const quotaExceededMessage = 'You exceeded your current quota. Please check your plan and billing details. For more information, head to: https://ai.google.dev/gemini-api/docs/rate-limits.';
+
+    let message = '';
+    if (err instanceof Error) {
+        message = err.message;
+    } else if (typeof err === 'object' && err !== null) {
+        message = (err as any).message || JSON.stringify(err);
+    }
+
+    if (message.includes('RESOURCE_EXHAUSTED') || message.includes('quota')) {
+        return quotaExceededMessage;
+    }
+
+    return `${contextMessage}. Please try again.`;
+};
 
 const App: React.FC = () => {
     const [storyIdea, setStoryIdea] = useState<string>('');
     const [screenplay, setScreenplay] = useState<Scene[]>([]);
     const [characterReferences, setCharacterReferences] = useState<{ base64: string }[]>([]);
+    const [aspectRatio, setAspectRatio] = useState<string>('16:9');
     const [isLoadingScript, setIsLoadingScript] = useState<boolean>(false);
     const [isLoadingVisuals, setIsLoadingVisuals] = useState<boolean>(false);
+    const [isGeneratingCharacter, setIsGeneratingCharacter] = useState<boolean>(false);
+    const [modalImage, setModalImage] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     const handleGenerateScript = useCallback(async () => {
@@ -44,14 +66,30 @@ const App: React.FC = () => {
 
         } catch (err) {
             console.error(err);
-            setError('Failed to generate screenplay. Please check your API key and try again.');
+            setError(getErrorMessage(err, 'Failed to generate screenplay'));
         } finally {
             setIsLoadingScript(false);
             setIsLoadingVisuals(false);
         }
     }, [storyIdea]);
+
+    const handleGenerateCharacter = useCallback(async (prompt: string) => {
+        if (!prompt.trim()) return;
+
+        setIsGeneratingCharacter(true);
+        setError(null);
+        try {
+            const imageBase64 = await generateCharacterImage(prompt, aspectRatio);
+            handleAddReference({ base64: imageBase64 });
+        } catch (err) {
+            console.error(err);
+            setError(getErrorMessage(err, 'Failed to generate character image'));
+        } finally {
+            setIsGeneratingCharacter(false);
+        }
+    }, [aspectRatio]);
     
-    const handleAddReference = (image: { file: File, base64: string }) => {
+    const handleAddReference = (image: { file?: File, base64: string }) => {
         if (!characterReferences.some(ref => ref.base64 === image.base64)) {
             setCharacterReferences(prev => [...prev, { base64: image.base64 }]);
         }
@@ -67,12 +105,20 @@ const App: React.FC = () => {
         setCharacterReferences(prev => prev.filter((_, index) => index !== indexToRemove));
     };
 
+    const handleOpenImageModal = useCallback((base64: string) => {
+        setModalImage(base64);
+    }, []);
+
+    const handleCloseImageModal = useCallback(() => {
+        setModalImage(null);
+    }, []);
 
     const handleGenerateKeyframe = useCallback(async (sceneId: number, editPrompt?: string) => {
         const sceneIndex = screenplay.findIndex(s => s.id === sceneId);
         if (sceneIndex === -1 || !screenplay[sceneIndex].visual_prompt) return;
 
         setScreenplay(prev => prev.map(s => s.id === sceneId ? { ...s, isGeneratingImage: true } : s));
+        setError(null);
         
         try {
             const scene = screenplay[sceneIndex];
@@ -84,16 +130,18 @@ const App: React.FC = () => {
                 prompt,
                 refsBase64,
                 editPrompt ? existingImageBase64 : undefined,
-                editPrompt
+                editPrompt,
+                aspectRatio
             );
             
             setScreenplay(prev => prev.map(s => s.id === sceneId ? { ...s, keyframe_image_base64: imageBase64, isGeneratingImage: false } : s));
+            handleOpenImageModal(imageBase64);
         } catch (err) {
             console.error(err);
-            setError(`Failed to generate keyframe for scene ${sceneId}. Please try again.`);
+            setError(getErrorMessage(err, `Failed to generate keyframe for scene ${sceneId}`));
             setScreenplay(prev => prev.map(s => s.id === sceneId ? { ...s, isGeneratingImage: false } : s));
         }
-    }, [screenplay, characterReferences]);
+    }, [screenplay, characterReferences, handleOpenImageModal, aspectRatio]);
 
     const handleDownloadScript = () => {
         const scriptContent = screenplay.map(scene => `
@@ -120,6 +168,7 @@ ${scene.action_dialogue}
         downloadImagesAsZip(screenplay, 'screenplay_keyframes.zip');
     };
 
+
     return (
         <div className="min-h-screen bg-gray-900 text-gray-100 font-sans">
             <main className="container mx-auto px-4 py-8">
@@ -140,19 +189,6 @@ ${scene.action_dialogue}
                     />
                 </div>
 
-                {screenplay.length > 0 && (
-                    <div className="bg-gray-800 shadow-2xl rounded-lg p-6 mb-8 border border-gray-700">
-                         <h2 className="text-2xl font-bold text-cyan-400 mb-4">2. Character References</h2>
-                         <p className="text-sm text-gray-400 mb-4">Upload initial character images or lock them from generated keyframes below. These references will be used to maintain consistency in all subsequent image generations.</p>
-                         <CharacterManagement 
-                            onImageUpload={handleAddReference} 
-                            references={characterReferences}
-                            onRemove={handleRemoveCharacter}
-                         />
-                    </div>
-                )}
-
-
                 {(isLoadingScript || isLoadingVisuals) && (
                     <div className="flex justify-center items-center my-10">
                          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-cyan-400"></div>
@@ -165,7 +201,25 @@ ${scene.action_dialogue}
                 {screenplay.length > 0 && (
                     <>
                         <div className="bg-gray-800 shadow-2xl rounded-lg p-6 mb-8 border border-gray-700">
-                            <h2 className="text-2xl font-bold text-cyan-400 mb-4">3. Download Your Assets</h2>
+                            <h2 className="text-2xl font-bold text-cyan-400 mb-4">2. Generation Settings</h2>
+                            <Settings aspectRatio={aspectRatio} onAspectRatioChange={setAspectRatio} />
+                        </div>
+                        
+                        <div className="bg-gray-800 shadow-2xl rounded-lg p-6 mb-8 border border-gray-700">
+                             <h2 className="text-2xl font-bold text-cyan-400 mb-4">3. Character References</h2>
+                             <p className="text-sm text-gray-400 mb-4">Generate characters from a prompt, upload your own images, or lock them from generated keyframes below. These references will be used to maintain consistency in all subsequent image generations.</p>
+                             <CharacterManagement 
+                                onImageUpload={handleAddReference} 
+                                references={characterReferences}
+                                onRemove={handleRemoveCharacter}
+                                onGenerateCharacter={handleGenerateCharacter}
+                                isGeneratingCharacter={isGeneratingCharacter}
+                                onImageClick={handleOpenImageModal}
+                             />
+                        </div>
+
+                        <div className="bg-gray-800 shadow-2xl rounded-lg p-6 mb-8 border border-gray-700">
+                            <h2 className="text-2xl font-bold text-cyan-400 mb-4">4. Download Your Assets</h2>
                             <DownloadControls
                                 onDownloadScript={handleDownloadScript}
                                 onDownloadTransitions={handleDownloadTransitions}
@@ -175,17 +229,25 @@ ${scene.action_dialogue}
                         </div>
                         
                         <div className="border-t border-gray-700 pt-8">
-                             <h2 className="text-3xl font-bold text-center text-cyan-400 mb-6">4. Your Visual Screenplay</h2>
+                             <h2 className="text-3xl font-bold text-center text-cyan-400 mb-6">5. Your Visual Screenplay</h2>
                              <SceneList 
                                 scenes={screenplay}
                                 onGenerateKeyframe={handleGenerateKeyframe}
                                 onLockCharacter={handleLockCharacter}
                                 characterReferences={characterReferences.map(r => r.base64)}
+                                onImageClick={handleOpenImageModal}
                              />
                         </div>
                     </>
                 )}
             </main>
+
+            {modalImage && (
+                <ImageModal 
+                    imageBase64={modalImage}
+                    onClose={handleCloseImageModal}
+                />
+            )}
         </div>
     );
 };

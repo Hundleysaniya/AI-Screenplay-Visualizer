@@ -8,9 +8,10 @@ interface SceneCardProps {
     onGenerateKeyframe: (sceneId: number, editPrompt?: string) => void;
     onLockCharacter: (imageBase64: string) => void;
     isLocked: boolean;
+    onImageClick: (base64: string) => void;
 }
 
-const SceneCard: React.FC<SceneCardProps> = ({ scene, onGenerateKeyframe, onLockCharacter, isLocked }) => {
+const SceneCard: React.FC<SceneCardProps> = ({ scene, onGenerateKeyframe, onLockCharacter, isLocked, onImageClick }) => {
     const [editPrompt, setEditPrompt] = useState('');
 
     const handleDownloadImage = () => {
@@ -51,7 +52,8 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, onGenerateKeyframe, onLock
                             <img 
                                 src={`data:image/png;base64,${scene.keyframe_image_base64}`} 
                                 alt={`Keyframe for Scene ${scene.scene_number}`}
-                                className="w-full h-auto object-cover rounded-md"
+                                className="w-full h-auto object-cover rounded-md cursor-pointer"
+                                onClick={() => onImageClick(scene.keyframe_image_base64!)}
                             />
                             <div className="absolute inset-0 bg-black bg-opacity-60 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                                 <button onClick={handleDownloadImage} className="px-3 py-2 text-sm bg-cyan-600 text-white rounded-md hover:bg-cyan-700 transition-colors">Download</button>

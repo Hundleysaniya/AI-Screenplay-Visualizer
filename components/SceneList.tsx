@@ -7,9 +7,10 @@ interface SceneListProps {
     onGenerateKeyframe: (sceneId: number, editPrompt?: string) => void;
     onLockCharacter: (imageBase64: string) => void;
     characterReferences: string[];
+    onImageClick: (base64: string) => void;
 }
 
-const SceneList: React.FC<SceneListProps> = ({ scenes, onGenerateKeyframe, onLockCharacter, characterReferences }) => {
+const SceneList: React.FC<SceneListProps> = ({ scenes, onGenerateKeyframe, onLockCharacter, characterReferences, onImageClick }) => {
     return (
         <div className="space-y-8">
             {scenes.map((scene, index) => (
@@ -19,6 +20,7 @@ const SceneList: React.FC<SceneListProps> = ({ scenes, onGenerateKeyframe, onLoc
                         onGenerateKeyframe={onGenerateKeyframe}
                         onLockCharacter={onLockCharacter}
                         isLocked={characterReferences.includes(scene.keyframe_image_base64 ?? '')}
+                        onImageClick={onImageClick}
                     />
                     {index < scenes.length - 1 && scene.transition_prompt && (
                          <div className="flex items-center justify-center">
