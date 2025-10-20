@@ -33,9 +33,17 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, onGenerateKeyframe, onLock
                         <span className="text-sm font-bold text-cyan-400 bg-gray-700 px-3 py-1 rounded-full">SCENE {scene.scene_number}</span>
                         <h3 className="text-xl font-semibold mt-2 text-gray-200">{scene.setting}</h3>
                     </div>
-                    <div className="mb-4 p-4 bg-gray-900 rounded-lg border border-gray-700">
-                        <h4 className="font-semibold text-gray-400 mb-1">Action & Dialogue</h4>
-                        <p className="text-gray-300">{scene.action_dialogue}</p>
+                    <div className="space-y-4 mb-4">
+                        <div className="p-4 bg-gray-900 rounded-lg border border-gray-700">
+                            <h4 className="font-semibold text-gray-400 mb-1">Actions</h4>
+                            <p className="text-gray-300">{scene.action}</p>
+                        </div>
+                        {scene.dialogue_vo && (
+                            <div className="p-4 bg-gray-900 rounded-lg border border-gray-700">
+                                <h4 className="font-semibold text-gray-400 mb-1">Dialog/Voice Over</h4>
+                                <p className="text-gray-300">{scene.dialogue_vo}</p>
+                            </div>
+                        )}
                     </div>
                     {scene.visual_prompt && (
                         <div className="p-4 bg-gray-900 rounded-lg border border-gray-700">

@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
-import type { RawScene, Scene } from '../types';
+import type { RawScene, Scene, ScreenplayData } from '../types';
 
 if (!process.env.API_KEY) {
     throw new Error("API_KEY environment variable not set");
@@ -7,23 +7,29 @@ if (!process.env.API_KEY) {
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-export async function generateScreenplay(storyIdea: string): Promise<RawScene[]> {
+export async function generateScreenplay(storyIdea: string): Promise<ScreenplayData> {
     const model = 'gemini-2.5-pro';
     
     const prompt = `
-        You are a professional screenplay writer. Your task is to take a story idea and turn it into a screenplay.
+        You are a professional screenplay writer and marketing expert for a film studio. Your task is to take a story idea and turn it into a screenplay, also providing a catchy title and a thumbnail prompt designed to go viral.
         The screenplay must be broken down into individual scenes. Each scene should represent approximately 8 seconds of screen time.
-        Format your response as a JSON object containing a single key "scenes". The value should be an array of scene objects.
-        Each scene object must have the following keys:
+        
+        Format your response as a single JSON object with the following keys:
+        - "title": A catchy and intriguing title for the screenplay.
+        - "thumbnail_prompt": A highly detailed, visually striking prompt for an AI image generator to create a thumbnail. This prompt should be crafted to spark curiosity and make people want to click. Think dynamic composition, dramatic lighting, and an element of mystery.
+        - "scenes": An array of scene objects.
+        
+        Each scene object in the "scenes" array must have these keys:
         - "scene_number": An integer for the scene number, starting from 1.
         - "setting": A string describing the location and time (e.g., "INT. COFFEE SHOP - DAY").
-        - "action_dialogue": A string describing the actions and any dialogue within the scene. Keep it concise for an 8-second duration.
+        - "action": A string describing the visual actions within the scene. Keep it concise for an 8-second duration.
+        - "dialogue_vo": A string containing any character dialogue or voice-over narration. If there is none, this should be an empty string.
 
         Here is the story idea:
         ---
         ${storyIdea}
         ---
-        Generate the screenplay now.
+        Generate the title, thumbnail prompt, and screenplay now.
     `;
 
     const response = await ai.models.generateContent({
@@ -34,6 +40,8 @@ export async function generateScreenplay(storyIdea: string): Promise<RawScene[]>
             responseSchema: {
                 type: Type.OBJECT,
                 properties: {
+                    title: { type: Type.STRING, description: "A catchy and intriguing title for the screenplay." },
+                    thumbnail_prompt: { type: Type.STRING, description: "A detailed, visually striking prompt for generating a thumbnail image." },
                     scenes: {
                         type: Type.ARRAY,
                         items: {
@@ -41,19 +49,21 @@ export async function generateScreenplay(storyIdea: string): Promise<RawScene[]>
                             properties: {
                                 scene_number: { type: Type.INTEGER },
                                 setting: { type: Type.STRING },
-                                action_dialogue: { type: Type.STRING }
+                                action: { type: Type.STRING },
+                                dialogue_vo: { type: Type.STRING },
                             },
-                            required: ["scene_number", "setting", "action_dialogue"]
+                            required: ["scene_number", "setting", "action", "dialogue_vo"]
                         }
                     }
-                }
+                },
+                required: ["title", "thumbnail_prompt", "scenes"]
             }
         }
     });
 
     const jsonText = response.text.trim();
     const result = JSON.parse(jsonText);
-    return result.scenes;
+    return result;
 }
 
 export async function generateVisualsForScene(
@@ -66,7 +76,8 @@ export async function generateVisualsForScene(
         You are a visual artist creating a keyframe for a movie scene. Based on the following scene description, create a detailed and concise visual prompt for an AI image generator. The prompt should capture the mood, characters, setting, and key action.
         ---
         Scene Setting: ${scene.setting}
-        Scene Action/Dialogue: ${scene.action_dialogue}
+        Scene Action: ${scene.action}
+        Scene Dialogue/VO: ${scene.dialogue_vo}
         ---
         Generate the visual prompt.
     `;
@@ -80,11 +91,13 @@ export async function generateVisualsForScene(
             ---
             From Scene:
             Setting: ${scene.setting}
-            Action/Dialogue: ${scene.action_dialogue}
+            Action: ${scene.action}
+            Dialogue/VO: ${scene.dialogue_vo}
             ---
             To Scene:
             Setting: ${nextScene.setting}
-            Action/Dialogue: ${nextScene.action_dialogue}
+            Action: ${nextScene.action}
+            Dialogue/VO: ${nextScene.dialogue_vo}
             ---
             Generate a concise transition prompt (e.g., "MATCH CUT to a spinning wheel", "SMASH CUT to black", "SLOW DISSOLVE to the next scene").
         `;

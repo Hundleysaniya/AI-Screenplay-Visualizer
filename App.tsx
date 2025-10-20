@@ -9,6 +9,7 @@ import DownloadControls from './components/DownloadControls';
 import CharacterManagement from './components/CharacterImageUpload';
 import ImageModal from './components/ImageModal';
 import Settings from './components/Settings';
+import ScreenplayHeader from './components/ScreenplayHeader';
 
 const getErrorMessage = (err: unknown, contextMessage: string): string => {
     const quotaExceededMessage = 'You exceeded your current quota. Please check your plan and billing details. For more information, head to: https://ai.google.dev/gemini-api/docs/rate-limits.';
@@ -30,13 +31,32 @@ const getErrorMessage = (err: unknown, contextMessage: string): string => {
 const App: React.FC = () => {
     const [storyIdea, setStoryIdea] = useState<string>('');
     const [screenplay, setScreenplay] = useState<Scene[]>([]);
+    const [title, setTitle] = useState<string>('');
+    const [thumbnailPrompt, setThumbnailPrompt] = useState<string>('');
+    const [thumbnailImage, setThumbnailImage] = useState<string | null>(null);
     const [characterReferences, setCharacterReferences] = useState<{ base64: string }[]>([]);
     const [aspectRatio, setAspectRatio] = useState<string>('16:9');
     const [isLoadingScript, setIsLoadingScript] = useState<boolean>(false);
     const [isLoadingVisuals, setIsLoadingVisuals] = useState<boolean>(false);
     const [isGeneratingCharacter, setIsGeneratingCharacter] = useState<boolean>(false);
+    const [isGeneratingThumbnail, setIsGeneratingThumbnail] = useState<boolean>(false);
     const [modalImage, setModalImage] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+
+    const handleGenerateThumbnail = useCallback(async (prompt: string) => {
+        if (!prompt) return;
+        setIsGeneratingThumbnail(true);
+        if (error?.includes('thumbnail')) setError(null);
+        try {
+            const imageBase64 = await generateKeyframeImage(prompt, [], undefined, undefined, aspectRatio);
+            setThumbnailImage(imageBase64);
+        } catch (err) {
+            console.error(err);
+            setError(getErrorMessage(err, 'Failed to generate thumbnail image'));
+        } finally {
+            setIsGeneratingThumbnail(false);
+        }
+    }, [aspectRatio, error]);
 
     const handleGenerateScript = useCallback(async () => {
         if (!storyIdea.trim()) {
@@ -47,11 +67,19 @@ const App: React.FC = () => {
         setError(null);
         setScreenplay([]);
         setCharacterReferences([]);
+        setTitle('');
+        setThumbnailPrompt('');
+        setThumbnailImage(null);
         
         try {
-            const scenes = await generateScreenplay(storyIdea);
+            const { title, thumbnail_prompt, scenes } = await generateScreenplay(storyIdea);
+            setTitle(title);
+            setThumbnailPrompt(thumbnail_prompt);
             setScreenplay(scenes.map(s => ({ ...s, id: s.scene_number })));
             
+            // Kick off thumbnail generation, but don't wait for it
+            handleGenerateThumbnail(thumbnail_prompt);
+
             setIsLoadingVisuals(true);
             const visualPromises = scenes.map((scene, index) => 
                 generateVisualsForScene(scene, scenes[index + 1])
@@ -71,7 +99,7 @@ const App: React.FC = () => {
             setIsLoadingScript(false);
             setIsLoadingVisuals(false);
         }
-    }, [storyIdea]);
+    }, [storyIdea, handleGenerateThumbnail]);
 
     const handleGenerateCharacter = useCallback(async (prompt: string) => {
         if (!prompt.trim()) return;
@@ -148,8 +176,11 @@ const App: React.FC = () => {
 ## SCENE ${scene.scene_number}
 **Setting:** ${scene.setting}
 
-**Action/Dialogue:**
-${scene.action_dialogue}
+**actions**
+${scene.action}
+
+**dialog/voice over**
+${scene.dialogue_vo}
         `).join('\n\n---\n');
         downloadTextFile(scriptContent, 'screenplay.txt');
     };
@@ -200,6 +231,14 @@ ${scene.action_dialogue}
                 
                 {screenplay.length > 0 && (
                     <>
+                        <ScreenplayHeader 
+                            title={title}
+                            thumbnailImage={thumbnailImage}
+                            isGeneratingThumbnail={isGeneratingThumbnail}
+                            onGenerateThumbnail={() => handleGenerateThumbnail(thumbnailPrompt)}
+                            onImageClick={handleOpenImageModal}
+                        />
+
                         <div className="bg-gray-800 shadow-2xl rounded-lg p-6 mb-8 border border-gray-700">
                             <h2 className="text-2xl font-bold text-cyan-400 mb-4">2. Generation Settings</h2>
                             <Settings aspectRatio={aspectRatio} onAspectRatioChange={setAspectRatio} />
